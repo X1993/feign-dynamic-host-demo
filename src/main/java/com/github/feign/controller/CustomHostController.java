@@ -16,7 +16,7 @@ public class CustomHostController {
     @Autowired
     private CustomHostFeign customHostFeign;
 
-    @GetMapping("test")
+    @GetMapping("/test")
     public void test(@RequestParam(value = "host") String host)
     {
         customHostFeign.test(host);

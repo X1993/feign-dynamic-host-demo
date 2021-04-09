@@ -17,7 +17,7 @@ public interface CustomHostFeign {
      * 通过名为{@link DynamicHostClient#HOST_HEADER}的头设置请求host
      * @param host 指定请求host
      */
-    @GetMapping("test")
+    @GetMapping("/test")
     void test(@RequestHeader(HOST_HEADER) String host);
 
 }
