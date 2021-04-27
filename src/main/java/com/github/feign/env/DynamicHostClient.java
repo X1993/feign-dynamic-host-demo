@@ -6,6 +6,9 @@ import feign.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.ListableBeanFactory;
+import org.springframework.cloud.openfeign.ribbon.LoadBalancerFeignClient;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import java.io.IOException;
@@ -18,34 +21,29 @@ import java.util.stream.Collectors;
 /**
  * 动态host client
  *
- <p>
-    //案例
-    @FeignClient(name = "random" ,configuration = DynamicHostClient.class)
-    public interface CustomHostFeign {
-
-        @GetMapping("test")
-        void test(@RequestHeader(HOST_HEADER) String host);
-
-    }
-
-    customHostFeign.test("10.100.100.16:8080") // curl get http://10.100.100.16:8080/test
-
- </p>
-
+ * <p>
+ *   //案例，注意，不要将这个类注入到spring容器，否则会导致ribbon失效
+ *   @FeignClient(name = "random" ,configuration = DynamicHostClient.class)
+ *   public interface CustomHostFeign {
+ *
+ *       @GetMapping("test")
+ *       void test(@RequestHeader(HOST_HEADER) String host);
+ *
+ *   }
+ *
+ *   customHostFeign.test("10.100.100.16:8080") // curl get http://10.100.100.16:8080/test
+ * </p>
+ *
  * @Author: X1993
  * @Date: 2021/3/25
  */
-public class DynamicHostClient implements Client ,ApplicationContextAware {
+public class DynamicHostClient implements Client, ApplicationContextAware {
 
     private final static Logger LOGGER = LoggerFactory.getLogger(DynamicHostClient.class);
 
     public static final String HOST_HEADER = "CUSTOM_HOST";
 
     private Client delegate;
-
-    public interface Delegate extends Client{
-
-    }
 
     @Override
     public Response execute(Request request, Request.Options options) throws IOException
@@ -77,6 +75,10 @@ public class DynamicHostClient implements Client ,ApplicationContextAware {
         return delegate.execute(newRequest ,options);
     }
 
+    public interface Delegate extends Client{
+
+    }
+
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException
     {
@@ -84,10 +86,26 @@ public class DynamicHostClient implements Client ,ApplicationContextAware {
                 .values()
                 .stream()
                 .findFirst()
-                .orElseGet(null);
+                .orElse(null);
 
-        if (delegate == null){
-            delegate =  new Client.Default(null, null);
+        if (delegate == null) {
+            BeanFactory parentBeanFactory = applicationContext.getParentBeanFactory();
+
+            if (parentBeanFactory instanceof ListableBeanFactory) {
+                this.delegate = ((ListableBeanFactory) parentBeanFactory).getBeansOfType(Client.class)
+                        .values()
+                        .stream()
+                        .findFirst()
+                        .orElse(null);
+
+                if (this.delegate instanceof LoadBalancerFeignClient) {
+                    this.delegate = ((LoadBalancerFeignClient) this.delegate).getDelegate();
+                }
+            }
+        }
+
+        if (this.delegate == null){
+            this.delegate =  new Client.Default(null, null);
         }
     }
 
