@@ -34,6 +34,8 @@ import java.util.stream.Collectors;
  *   customHostFeign.test("10.100.100.16:8080") // curl get http://10.100.100.16:8080/test
  * </p>
  *
+ * 有考虑使用ThreadLocal，但是不能支持hystrix
+ *
  * @Author: X1993
  * @Date: 2021/3/25
  */

@@ -11,7 +11,7 @@ import static com.github.feign.env.DynamicHostClient.HOST_HEADER;
  * @Date: 2021/3/30
  */
 @FeignClient(name = "random"
-        ,configuration = DynamicHostClient.class
+        ,configuration = {DynamicHostClient.class}
 )
 public interface CustomHostFeign {
 

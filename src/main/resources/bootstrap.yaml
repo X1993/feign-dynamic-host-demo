@@ -3,3 +3,7 @@ spring:
     active: ${ENVIRONMENT:dev}
   application:
     name: feign-dynamic-host-demo
+
+feign:
+  hystrix:
+    enabled: false
