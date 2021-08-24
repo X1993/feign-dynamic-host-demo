@@ -10,16 +10,20 @@ import static com.github.feign.env.DynamicHostClient.HOST_HEADER;
  * @Author: X1993
  * @Date: 2021/3/30
  */
-@FeignClient(name = "random"
-        ,configuration = {DynamicHostClient.class}
-)
+@FeignClient(name = "custom-service", configuration = {DynamicHostClient.class})
 public interface CustomHostFeign {
 
     /**
-     * 通过名为{@link DynamicHostClient#HOST_HEADER}的头设置请求host
+     * 通过名为{@link DynamicHostClient#HOST_HEADER}的请求头设置请求host
      * @param host 指定请求host
      */
     @GetMapping("/test")
     void test(@RequestHeader(HOST_HEADER) String host);
+
+    /**
+     * 通过{@link DynamicHostClient#SERVICE_HOST_CONTEXT}设置请求host
+     */
+    @GetMapping("/test")
+    void test();
 
 }

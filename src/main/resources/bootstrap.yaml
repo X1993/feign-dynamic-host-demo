@@ -6,4 +6,4 @@ spring:
 
 feign:
   hystrix:
-    enabled: false
+    enabled: true
