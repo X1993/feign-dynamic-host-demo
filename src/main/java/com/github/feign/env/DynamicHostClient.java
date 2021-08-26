@@ -1,11 +1,13 @@
 package com.github.feign.env;
 
-import com.netflix.hystrix.HystrixInvokable;
-import com.netflix.hystrix.exception.HystrixRuntimeException;
+import com.netflix.hystrix.HystrixThreadPoolKey;
 import com.netflix.hystrix.strategy.HystrixPlugins;
-import com.netflix.hystrix.strategy.concurrency.HystrixRequestContext;
-import com.netflix.hystrix.strategy.concurrency.HystrixRequestVariableDefault;
+import com.netflix.hystrix.strategy.concurrency.*;
+import com.netflix.hystrix.strategy.eventnotifier.HystrixEventNotifier;
 import com.netflix.hystrix.strategy.executionhook.HystrixCommandExecutionHook;
+import com.netflix.hystrix.strategy.metrics.HystrixMetricsPublisher;
+import com.netflix.hystrix.strategy.properties.HystrixPropertiesStrategy;
+import com.netflix.hystrix.strategy.properties.HystrixProperty;
 import feign.Client;
 import feign.Request;
 import feign.Response;
@@ -22,23 +24,38 @@ import java.net.URI;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
  * 动态host client
  *
  * <p>
- *   //案例，注意，不要将{@link DynamicHostClient}注入到spring容器，否则会导致ribbon失效
+ *   //案例
  *
+ *   // 如果将{@link DynamicHostClient}注入到spring容器，会覆盖默认Client，导致ribbon失效，通过configuration属性引用即可
  *   @FeignClient(name = "custom-name" ,configuration = DynamicHostClient.class)
  *   public interface CustomHostFeign {
  *
+ *       //通过名为{@link DynamicHostClient#HOST_HEADER}的请求头设置请求host，优先级高
  *       @GetMapping("test")
  *       void test(@RequestHeader(HOST_HEADER) String host);
  *
+ *       //通过{@link DynamicHostClient#SERVICE_HOST_CONTEXT}设置请求host
+ *       @GetMapping("/test")
+ *       void test();
+ *
  *   }
  *
- *   customHostFeign.test("10.100.100.16:8080") // curl get http://10.100.100.16:8080/test
+ *   String host = "10.100.100.16:8080"
+ *   customHostFeign.test(host) // curl get http://10.100.100.16:8080/test
+ *
+ *   SERVICE_HOST_CONTEXT.set(host);
+ *   customHostFeign.test(); // curl get http://10.100.100.16:8080/test
+ *
  * </p>
  *
  * @Author: X1993
@@ -50,16 +67,6 @@ public class DynamicHostClient implements Client, ApplicationContextAware {
 
     /**
      * 通过请求头定义访问服务地址,优先级大于{@link DynamicHostClient#SERVICE_HOST_CONTEXT}
-     *
-     * <p>
-     *     @FeignClient(name = "custom-name" ,configuration = DynamicHostClient.class)
-     *     public interface CustomHostFeign {
-     *
-     *       @GetMapping("test")
-     *       void test(@RequestHeader(HOST_HEADER) String host);
-     *
-     *     }
-     * </p>
      */
     public static final String HOST_HEADER = "CUSTOM_HOST";
 
@@ -71,7 +78,19 @@ public class DynamicHostClient implements Client, ApplicationContextAware {
     private Client delegate;
 
     static {
-        HystrixPlugins.getInstance().registerCommandExecutionHook(new HystrixThreadLocalHook());
+        HystrixPlugins instance = HystrixPlugins.getInstance();
+        HystrixMetricsPublisher metricsPublisher = instance.getMetricsPublisher();
+        HystrixEventNotifier eventNotifier = instance.getEventNotifier();
+        HystrixPropertiesStrategy propertiesStrategy = instance.getPropertiesStrategy();
+        HystrixCommandExecutionHook commandExecutionHook = instance.getCommandExecutionHook();
+        HystrixConcurrencyStrategy concurrencyStrategy = instance.getConcurrencyStrategy();
+        HystrixPlugins.reset();
+        HystrixPlugins.getInstance().registerMetricsPublisher(metricsPublisher);
+        HystrixPlugins.getInstance().registerEventNotifier(eventNotifier);
+        HystrixPlugins.getInstance().registerPropertiesStrategy(propertiesStrategy);
+        HystrixPlugins.getInstance().registerCommandExecutionHook(commandExecutionHook);
+        HystrixPlugins.getInstance().registerConcurrencyStrategy(new ThreadLocalCopyHystrixConcurrencyStrategy(concurrencyStrategy));
+
     }
 
     @Override
@@ -79,7 +98,7 @@ public class DynamicHostClient implements Client, ApplicationContextAware {
     {
         String host = (String) request.headers().getOrDefault(HOST_HEADER ,Collections.EMPTY_LIST)
             .stream()
-            .findFirst()
+            .findFirst()  //如果请求头为空，默认从线程变量获取
             .orElse(SERVICE_HOST_CONTEXT.get());
 
         if (host == null){
@@ -139,51 +158,83 @@ public class DynamicHostClient implements Client, ApplicationContextAware {
     }
 
     /**
-     * @see <a href="https://segmentfault.com/a/1190000037781121?utm_source=tag-newest">Hystrix 如何解决 ThreadLocal 信息丢失</a>
+     * <href="https://blog.csdn.net/songhaifengshuaige/article/details/80345012">Hystrix实现ThreadLocal上下文的传递</href>
      */
-    private static class HystrixThreadLocalHook extends HystrixCommandExecutionHook {
+    private static class ThreadLocalCopyHystrixConcurrencyStrategy extends HystrixConcurrencyStrategy {
 
-        private HystrixRequestVariableDefault<String> requestVariable = new HystrixRequestVariableDefault<>();
+        /**
+         * {@link HystrixPlugins#registerConcurrencyStrategy(HystrixConcurrencyStrategy)}不支持添加多个策略，
+         * 这里利用装饰者模式避免覆盖已注册的策略
+         */
+        private final HystrixConcurrencyStrategy target;
 
-        private HystrixThreadLocalHook() {
+        private ThreadLocalCopyHystrixConcurrencyStrategy(HystrixConcurrencyStrategy target) {
+            this.target = target;
         }
 
         @Override
-        public <T> void onStart(HystrixInvokable<T> commandInstance) {
-            HystrixRequestContext.initializeContext();
-            copyTraceId();
+        public ThreadPoolExecutor getThreadPool(HystrixThreadPoolKey threadPoolKey,
+                                                HystrixProperty<Integer> corePoolSize,
+                                                HystrixProperty<Integer> maximumPoolSize,
+                                                HystrixProperty<Integer> keepAliveTime,
+                                                TimeUnit unit,
+                                                BlockingQueue<Runnable> workQueue)
+        {
+            if (target == null) {
+                return super.getThreadPool(threadPoolKey, corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue);
+            }
+            return target.getThreadPool(threadPoolKey, corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue);
         }
 
         @Override
-        public <T> void onExecutionStart(HystrixInvokable<T> commandInstance) {
-            pasteTraceId();
+        public BlockingQueue<Runnable> getBlockingQueue(int maxQueueSize) {
+            if (target == null) {
+                return super.getBlockingQueue(maxQueueSize);
+            }
+            return target.getBlockingQueue(maxQueueSize);
         }
 
         @Override
-        public <T> void onFallbackStart(HystrixInvokable<T> commandInstance) {
-            pasteTraceId();
+        public <T> HystrixRequestVariable<T> getRequestVariable(HystrixRequestVariableLifecycle<T> rv) {
+            if (target == null) {
+                return super.getRequestVariable(rv);
+            }
+            return target.getRequestVariable(rv);
         }
 
         @Override
-        public <T> void onSuccess(HystrixInvokable<T> commandInstance) {
-            HystrixRequestContext.getContextForCurrentThread().shutdown();
-            super.onSuccess(commandInstance);
+        public <T> Callable<T> wrapCallable(Callable<T> callable)
+        {
+            if (target == null){
+                return super.wrapCallable(callable);
+            }
+            return target.wrapCallable(new ThreadLocalCopyCallable<>(callable));
         }
 
-        @Override
-        public <T> Exception onError(HystrixInvokable<T> commandInstance, HystrixRuntimeException.FailureType failureType, Exception e) {
-            HystrixRequestContext.getContextForCurrentThread().shutdown();
-            return super.onError(commandInstance, failureType, e);
-        }
+        class ThreadLocalCopyCallable<T> implements Callable<T>
+        {
+            private final String host;
 
-        private void copyTraceId() {
-            requestVariable.set(SERVICE_HOST_CONTEXT.get());
-        }
+            private final Callable<T> callable;
 
-        private void pasteTraceId() {
-            SERVICE_HOST_CONTEXT.set(requestVariable.get());
-        }
+            public ThreadLocalCopyCallable(Callable<T> callable) {
+                //这一步在主线程中执行
+                host = SERVICE_HOST_CONTEXT.get();
+                this.callable = callable;
+            }
 
+            @Override
+            public T call() throws Exception
+            {
+                //这一步在hystrix线程池中执行
+                try {
+                    SERVICE_HOST_CONTEXT.set(host);
+                    return callable.call();
+                }finally {
+                    SERVICE_HOST_CONTEXT.remove();
+                }
+            }
+        }
     }
 
 
