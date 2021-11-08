@@ -11,6 +11,7 @@ import com.netflix.hystrix.strategy.properties.HystrixProperty;
 import feign.Client;
 import feign.Request;
 import feign.Response;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
@@ -85,11 +86,11 @@ public class DynamicHostClient implements Client, ApplicationContextAware {
         HystrixCommandExecutionHook commandExecutionHook = instance.getCommandExecutionHook();
         HystrixConcurrencyStrategy concurrencyStrategy = instance.getConcurrencyStrategy();
         HystrixPlugins.reset();
-        HystrixPlugins.getInstance().registerMetricsPublisher(metricsPublisher);
-        HystrixPlugins.getInstance().registerEventNotifier(eventNotifier);
-        HystrixPlugins.getInstance().registerPropertiesStrategy(propertiesStrategy);
-        HystrixPlugins.getInstance().registerCommandExecutionHook(commandExecutionHook);
-        HystrixPlugins.getInstance().registerConcurrencyStrategy(new ThreadLocalCopyHystrixConcurrencyStrategy(concurrencyStrategy));
+        instance.registerMetricsPublisher(metricsPublisher);
+        instance.registerEventNotifier(eventNotifier);
+        instance.registerPropertiesStrategy(propertiesStrategy);
+        instance.registerCommandExecutionHook(commandExecutionHook);
+        instance.registerConcurrencyStrategy(new ThreadLocalCopyHystrixConcurrencyStrategy(concurrencyStrategy));
 
     }
 
@@ -101,7 +102,7 @@ public class DynamicHostClient implements Client, ApplicationContextAware {
             .findFirst()  //如果请求头为空，默认从线程变量获取
             .orElse(SERVICE_HOST_CONTEXT.get());
 
-        if (host == null){
+        if (StringUtils.isBlank(host)){
             LOGGER.warn("request don't contain header [{0}] ,don't rewrite host ,direct execute" ,HOST_HEADER);
             return delegate.execute(request ,options);
         }

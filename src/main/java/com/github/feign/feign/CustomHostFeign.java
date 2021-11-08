@@ -17,13 +17,13 @@ public interface CustomHostFeign {
      * 通过名为{@link DynamicHostClient#HOST_HEADER}的请求头设置请求host
      * @param host 指定请求host
      */
-    @GetMapping("/test")
-    void test(@RequestHeader(HOST_HEADER) String host);
+    @GetMapping("/test1")
+    String test1(@RequestHeader(HOST_HEADER) String host);
 
     /**
      * 通过{@link DynamicHostClient#SERVICE_HOST_CONTEXT}设置请求host
      */
-    @GetMapping("/test")
-    void test();
+    @GetMapping("/test1")
+    String test1();
 
 }
