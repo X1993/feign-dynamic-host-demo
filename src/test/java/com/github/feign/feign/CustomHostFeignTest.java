@@ -11,7 +11,7 @@ import org.springframework.util.Assert;
 import static com.github.feign.env.DynamicHostClient.SERVICE_HOST_CONTEXT;
 
 /**
- * @author wangjj7
+ * @author X1993
  * @date 2022/2/22
  * @description
  */
