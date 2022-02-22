@@ -1,19 +1,23 @@
-package com.github.feign.controller;
+package com.github.feign.feign;
 
-import com.github.feign.feign.CustomHostFeign;
+import com.github.feign.Application;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.util.Assert;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
 import static com.github.feign.env.DynamicHostClient.SERVICE_HOST_CONTEXT;
 
 /**
- * @Author: X1993
- * @Date: 2021/3/30
+ * @author wangjj7
+ * @date 2022/2/22
+ * @description
  */
-@RestController
-public class CustomHostController {
+@RunWith(SpringRunner.class)
+@SpringBootTest(classes = Application.class ,webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
+public class CustomHostFeignTest {
 
     @Autowired
     private CustomHostFeign customHostFeign;
@@ -21,13 +25,8 @@ public class CustomHostController {
     @Value("${server.port:8080}")
     private int port;
 
-    @GetMapping("/test1")
-    public String test1(){
-        return "test1";
-    }
-
-    @GetMapping("/test")
-    public String test()
+    @Test
+    public void test()
     {
         String host = "localhost:" + port;
         Assert.isTrue("test1".equals(customHostFeign.test1(host)));
@@ -36,13 +35,11 @@ public class CustomHostController {
         SERVICE_HOST_CONTEXT.set(host);
         Assert.isTrue("test1".equals(customHostFeign.test1()));
 
-        SERVICE_HOST_CONTEXT.set("ssss");
+        SERVICE_HOST_CONTEXT.set("localhost:-1");
         //测试高优先级
         customHostFeign.test1(host);
 
         SERVICE_HOST_CONTEXT.remove();
-
-        return "OK";
     }
 
 }
