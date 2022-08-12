@@ -1,4 +1,4 @@
-package com.github.feign.feign;
+package com.github.feign.feign.mock;
 
 import com.github.feign.env.DynamicHostClient;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -13,17 +13,19 @@ import static com.github.feign.env.DynamicHostClient.HOST_HEADER;
 @FeignClient(name = "custom-service", configuration = {DynamicHostClient.class})
 public interface CustomHostFeign {
 
+    String MOCK_SERVER_URN = "/custom_feign_feign/mock_server";
+
     /**
      * 通过名为{@link DynamicHostClient#HOST_HEADER}的请求头设置请求host
      * @param host 指定请求host
      */
-    @GetMapping("/test1")
-    String test1(@RequestHeader(HOST_HEADER) String host);
+    @GetMapping(MOCK_SERVER_URN)
+    String request(@RequestHeader(HOST_HEADER) String host);
 
     /**
      * 通过{@link DynamicHostClient#SERVICE_HOST_CONTEXT}设置请求host
      */
-    @GetMapping("/test1")
-    String test1();
+    @GetMapping(MOCK_SERVER_URN)
+    String request();
 
 }

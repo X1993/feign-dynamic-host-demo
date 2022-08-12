@@ -1,6 +1,7 @@
 package com.github.feign.feign;
 
 import com.github.feign.Application;
+import com.github.feign.feign.mock.CustomHostFeign;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.util.Assert;
 import static com.github.feign.env.DynamicHostClient.SERVICE_HOST_CONTEXT;
+import static com.github.feign.feign.mock.CustomHostFeignControllerMock.MOCK_SERVER_RESULT;
 
 /**
  * @author X1993
@@ -29,15 +31,15 @@ public class CustomHostFeignTest {
     public void test()
     {
         String host = "localhost:" + port;
-        Assert.isTrue("test1".equals(customHostFeign.test1(host)));
+        Assert.isTrue(MOCK_SERVER_RESULT.equals(customHostFeign.request(host)));
 
         //通过线程变量设置请求host
         SERVICE_HOST_CONTEXT.set(host);
-        Assert.isTrue("test1".equals(customHostFeign.test1()));
+        Assert.isTrue(MOCK_SERVER_RESULT.equals(customHostFeign.request()));
 
         SERVICE_HOST_CONTEXT.set("localhost:-1");
         //测试高优先级
-        customHostFeign.test1(host);
+        customHostFeign.request(host);
 
         SERVICE_HOST_CONTEXT.remove();
     }
